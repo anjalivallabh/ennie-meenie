@@ -1,87 +1,910 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Heritage Market 360 VR Experience</title>
-    <meta name="description" content="Interactive 360 VR Viewer for the Heritage Market">
-    <!-- Load A-Frame WebVR Library -->
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Purna Market Redevelopment - VR Teleport Showcase</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0c0806;
+      color: #f7ebe1;
+      overflow: hidden;
+      user-select: none;
+    }
 
-    <!-- Custom Script to handle switching environments in VR -->
-    <script>
-      AFRAME.registerComponent('scene-switcher', {
-        schema: {
-          targetSrc: { type: 'string' }
-        },
-        init: function () {
-          let el = this.el;
-          let target = this.data.targetSrc;
+    /* Glassmorphism Styling - Warm Boho Theme */
+    .glass-panel {
+      background: rgba(26, 16, 12, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 12px rgba(245, 158, 11, 0.08);
+    }
 
-          // When this entity is clicked, change the sky background instantly
-          el.addEventListener('click', function () {
-            let sky = document.querySelector('#main-sky');
-            sky.setAttribute('src', target);
-          });
+    .glass-panel-glow {
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.4), inset 0 0 15px rgba(245, 158, 11, 0.2);
+      border-color: rgba(251, 191, 36, 0.8);
+    }
 
-          // Add hover effects for the cursor
-          el.addEventListener('mouseenter', function () {
-            el.setAttribute('scale', '1.1 1.1 1.1');
-            el.setAttribute('material', 'color: #4CAF50'); // Turn green on hover
-          });
-          el.addEventListener('mouseleave', function () {
-            el.setAttribute('scale', '1 1 1');
-            el.setAttribute('material', 'color: #333333'); // Revert to dark gray
-          });
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(20, 12, 8, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(245, 158, 11, 0.5);
+      border-radius: 4px;
+    }
+
+    /* Keymap Canvas */
+    #keymap-canvas {
+      border-radius: 8px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: #140d0a;
+    }
+
+    /* Teleport Warp Overlay Animation */
+    #teleport-flash {
+      pointer-events: none;
+      transition: opacity 0.35s ease-in-out;
+    }
+
+    /* Pulse effects */
+    @keyframes portalPulse {
+      0% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.08); opacity: 1; }
+      100% { transform: scale(1); opacity: 0.8; }
+    }
+    .portal-active-pulse {
+      animation: portalPulse 1.6s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden select-none">
+
+  <!-- WebGL 360 VR Canvas Container -->
+  <div id="webgl-container" class="absolute inset-0 z-0 cursor-grab active:cursor-grabbing"></div>
+
+  <!-- Teleport Warp Transition Screen Flash -->
+  <div id="teleport-flash" class="absolute inset-0 z-40 bg-amber-950 opacity-0 pointer-events-none flex flex-col items-center justify-center">
+    <div class="text-[#fbbf24] text-2xl font-bold tracking-widest uppercase flex items-center gap-3">
+      <i class="fa-solid fa-sparkles fa-spin text-3xl"></i>
+      <span>TELEPORTING...</span>
+    </div>
+    <div id="teleport-target-name" class="text-amber-100 text-sm mt-2 font-mono">Artisan Market Canopy & Plaza</div>
+  </div>
+
+  <!-- Top Teleport Status Banner -->
+  <div id="teleport-banner" class="absolute top-16 left-1/2 -translate-x-1/2 z-20 glass-panel glass-panel-glow px-5 py-2.5 rounded-full flex items-center gap-4 text-xs border border-[#f59e0b]/40 pointer-events-auto shadow-2xl">
+    <div class="flex items-center gap-2 text-[#fbbf24] font-bold">
+      <i class="fa-solid fa-sun fa-spin text-sm" id="status-spinner"></i>
+      <span id="zone-status-badge" class="uppercase tracking-wider font-mono text-[11px] bg-[#f59e0b]/20 px-2 py-0.5 rounded text-[#fbbf24]">EXPLORING ZONE 1/5</span>
+    </div>
+    <div class="h-3 w-px bg-[#f59e0b]/30"></div>
+    <div class="text-white text-[11px] flex items-center gap-2" id="teleport-guidance-text">
+      <span class="text-amber-200">Look around 360° to explore, or click any Teleport Portal</span>
+    </div>
+  </div>
+
+  <!-- VR Center Gaze Reticle -->
+  <div id="reticle" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none flex flex-col items-center justify-center">
+    <div id="reticle-dot" class="w-5 h-5 border-2 border-[#fbbf24] rounded-full flex items-center justify-center transition-all duration-200 shadow-lg">
+      <div class="w-1.5 h-1.5 bg-[#fbbf24] rounded-full"></div>
+    </div>
+    <span id="reticle-label" class="mt-2 text-[10px] tracking-widest uppercase font-semibold text-[#fbbf24] bg-[#1a100c]/90 px-2 py-0.5 rounded border border-[#f59e0b]/40 shadow-xl hidden">
+      GAZE TELEPORT
+    </span>
+  </div>
+
+  <!-- Top Application Header -->
+  <header class="absolute top-0 left-0 right-0 z-30 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-[#0e0805]/95 to-transparent pointer-events-auto">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-[#f59e0b]/20 border border-[#fbbf24]/50 flex items-center justify-center text-[#fbbf24] shadow-md">
+        <i class="fa-solid fa-campground text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold text-white tracking-wider uppercase flex items-center gap-2">
+          PURNA BAZAAR REDEVELOPMENT
+          <span class="text-[10px] px-2 py-0.5 rounded bg-[#f59e0b]/25 border border-[#fbbf24]/60 text-[#fbbf24] font-mono">BOHO MARKETPLACE VR</span>
+        </h1>
+        <p class="text-[11px] text-amber-200/80 hidden sm:block">Open-Air Artisan Bazaar • Canopy & String Light Architecture Showcase</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Mode Switcher -->
+      <div class="glass-panel p-1 rounded-xl flex items-center text-xs">
+        <button id="btn-mode-web" class="px-3 py-1.5 rounded-lg font-semibold transition-all bg-[#f59e0b] text-slate-950 shadow-md">
+          <i class="fa-solid fa-desktop mr-1.5"></i>Web 360 Mode
+        </button>
+        <button id="btn-mode-vr" class="px-3 py-1.5 rounded-lg font-semibold text-amber-200 hover:text-white transition-all">
+          <i class="fa-solid fa-vr-cardboard mr-1.5"></i>VR Headset
+        </button>
+      </div>
+
+      <!-- Sound Ambiance Toggle -->
+      <button id="btn-audio" class="glass-panel p-2.5 rounded-xl text-amber-200 hover:text-[#fbbf24] transition-all" title="Toggle Market Ambiance Sound">
+        <i class="fa-solid fa-volume-xmark text-sm"></i>
+      </button>
+
+      <!-- Fullscreen Toggle -->
+      <button id="btn-fullscreen" class="glass-panel p-2.5 rounded-xl text-amber-200 hover:text-[#fbbf24] transition-all" title="Toggle Fullscreen">
+        <i class="fa-solid fa-expand text-sm"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Left Side Panel: Node Specs & Completion Meter -->
+  <aside id="left-panel" class="absolute top-20 left-4 z-30 w-72 sm:w-80 glass-panel rounded-2xl p-4 transition-all duration-300 max-h-[calc(100vh-160px)] flex flex-col pointer-events-auto">
+    <div class="flex items-center justify-between pb-3 border-b border-[#f59e0b]/25">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-[#fbbf24] flex items-center gap-2">
+        <i class="fa-solid fa-[#fbbf24] fa-store"></i> Active Zone Specs
+      </h2>
+      <button id="toggle-left-panel" class="text-xs text-amber-400 hover:text-white">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+    </div>
+
+    <div class="mt-3 overflow-y-auto space-y-3 text-xs pr-1 flex-1">
+      <!-- Active Space Header Card -->
+      <div class="p-3 rounded-xl bg-[#f59e0b]/15 border border-[#fbbf24]/40">
+        <div class="text-[10px] text-[#fbbf24] uppercase tracking-widest font-mono font-semibold mb-1">Current Teleport Zone</div>
+        <div id="node-title" class="text-sm font-extrabold text-white mb-1">Entrance Canopy & Festive Courtyard</div>
+        <p id="node-desc" class="text-[11px] text-amber-100/85 leading-relaxed">
+          Open-air greeting plaza enclosed by draped terracotta fabric sails, bamboo tripod framing, string lights, and macramé lamps.
+        </p>
+      </div>
+
+      <!-- Exploration Progress Meter -->
+      <div class="p-3 rounded-xl bg-black/50 border border-amber-900/60 space-y-1.5">
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="text-amber-200 font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-eye text-[#fbbf24]"></i> Space Inspection Progress
+          </span>
+          <span id="exploration-percentage" class="text-[#fbbf24] font-mono font-bold">0%</span>
+        </div>
+        <div class="w-full h-2 bg-amber-950 rounded-full overflow-hidden border border-amber-800/40">
+          <div id="exploration-bar" class="h-full bg-gradient-to-r from-amber-500 to-[#fbbf24] transition-all duration-300 w-0"></div>
+        </div>
+        <div id="exploration-status-text" class="text-[10px] text-amber-300/80 italic text-center pt-0.5">
+          Rotate view 360° to mark space as completed
+        </div>
+      </div>
+
+      <!-- Architectural Specs -->
+      <div class="space-y-2">
+        <div class="font-semibold text-[#fbbf24] text-[11px] uppercase tracking-wider">Design Highlights</div>
+        
+        <div id="specs-list" class="space-y-2">
+          <!-- Dynamically populated per node -->
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Side Panel: Teleport Hub & Site Map -->
+  <aside id="right-panel" class="absolute top-20 right-4 z-30 w-72 sm:w-80 glass-panel rounded-2xl p-4 transition-all duration-300 max-h-[calc(100vh-160px)] flex flex-col pointer-events-auto">
+    <div class="flex items-center justify-between pb-3 border-b border-[#f59e0b]/25">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-[#fbbf24] flex items-center gap-2">
+        <i class="fa-solid fa-location-dot"></i> Teleport Hub & Key Map
+      </h2>
+      <button id="toggle-right-panel" class="text-xs text-amber-400 hover:text-white">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+
+    <div class="mt-3 overflow-y-auto space-y-4 text-xs pr-1 flex-1">
+      <!-- Direct Teleport Selection List -->
+      <div>
+        <div class="text-[10px] uppercase font-semibold text-amber-200/80 tracking-wider mb-2">Instant Teleport Destinations</div>
+        <div class="space-y-1.5" id="teleport-buttons-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- Site Plan Key Map Widget -->
+      <div class="pt-2 border-t border-[#f59e0b]/20">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[10px] uppercase font-semibold text-[#fbbf24] tracking-wider">
+            <i class="fa-solid fa-map-location-dot mr-1"></i> Interactive Site Plan
+          </span>
+          <span class="text-[10px] text-amber-300 font-mono" id="fov-angle-display">FOV: 75°</span>
+        </div>
+
+        <!-- Canvas Mini Map -->
+        <div class="relative flex justify-center">
+          <canvas id="keymap-canvas" width="260" height="170" class="cursor-pointer shadow-inner" title="Click any node on map to teleport instantly"></canvas>
+          <div class="absolute bottom-2 left-3 bg-black/90 text-[9px] text-[#fbbf24] px-2 py-0.5 rounded border border-[#f59e0b]/40 pointer-events-none flex items-center gap-1.5 font-mono">
+            <span class="w-2 h-2 rounded-full bg-amber-500 inline-block animate-ping"></span>
+            <span>Live Camera Node</span>
+          </div>
+        </div>
+        <p class="text-[10px] text-amber-300/70 mt-1.5 text-center">Click any zone box on map to teleport</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Footer Teleport Action Bar -->
+  <footer class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-auto">
+    <!-- Teleport Action Bar -->
+    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 text-xs border border-[#f59e0b]/40 shadow-2xl">
+      <button id="btn-teleport-prev" class="px-3.5 py-2 rounded-xl bg-black/60 border border-amber-900 text-amber-200 hover:text-white font-medium flex items-center gap-2 text-[11px] disabled:opacity-40 transition-all">
+        <i class="fa-solid fa-arrow-left"></i> Prev Zone
+      </button>
+
+      <div class="text-center px-3">
+        <div class="text-[9px] text-[#fbbf24] font-mono uppercase tracking-widest">ACTIVE LOCATION</div>
+        <div id="footer-current-zone" class="text-xs font-extrabold text-white whitespace-nowrap">1. Entrance Canopy</div>
+      </div>
+
+      <button id="btn-teleport-next" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-[#fbbf24] text-slate-950 font-extrabold flex items-center gap-2 text-[11px] hover:from-amber-400 hover:to-amber-300 transition-all shadow-lg portal-active-pulse">
+        <span>TELEPORT TO NEXT</span>
+        <i class="fa-solid fa-bolt text-slate-950"></i>
+      </button>
+    </div>
+
+    <!-- VR Headset Action Controls -->
+    <div class="flex items-center gap-3">
+      <button id="btn-enter-vr-headset" class="glass-panel glass-panel-glow px-6 py-2 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-[#fbbf24] hover:brightness-110 text-slate-950 font-extrabold text-xs tracking-wider uppercase flex items-center gap-2 transition-all transform hover:scale-105 shadow-xl">
+        <i class="fa-solid fa-vr-cardboard text-base"></i>
+        <span>ENTER VR HEADSET MODE</span>
+      </button>
+
+      <button id="btn-reset-view" class="glass-panel p-2 rounded-full text-amber-200 hover:text-[#fbbf24] transition-all" title="Reset Camera View Angle">
+        <i class="fa-solid fa-arrows-to-circle text-sm"></i>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    // Integration of Real Images + Procedural Fallbacks
+    const MARKET_NODES = [
+      {
+        id: 0,
+        name: "Central View inside Heritage Market",
+        shortName: "1. Central View",
+        desc: "The vibrant heart of the heritage market, featuring layered terracotta & peach fabric tension sails and bustling artisan stalls.",
+        textureUrl: "option 2.jpg", // Image 1 mapped here
+        x: 50, y: 130, // Map Coordinates
+        nextId: 1,
+        prevId: null,
+        specs: [
+          "Central market bustling with organic produce and slow living hubs.",
+          "Structural bamboo tripod poles linked with natural jute rope lashings.",
+          "Warm Edison bulb string light grid creating a cozy twilight atmosphere."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.15, targetNode: 1, label: "TELEPORT ➔ Street View" }
+        ]
+      },
+      {
+        id: 1,
+        name: "Street View Towards Market",
+        shortName: "2. Street View",
+        desc: "The grand exterior street view capturing the majestic brick archways and the glass canopy bridging the heritage structures.",
+        textureUrl: "option 1_2.jpg", // Image 2 mapped here
+        x: 95, y: 75,
+        nextId: 2,
+        prevId: 0,
+        specs: [
+          "Massive terracotta brick arches framing the pedestrian walkways.",
+          "Glass and steel overhead canopy providing natural sunlight while protecting from weather.",
+          "Multi-level galleries with lush green trailing plants."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.35, targetNode: 2, label: "TELEPORT ➔ Organic Produce & Slow Living Hub" },
+          { phi: -0.1, theta: 3.1, targetNode: 0, label: "TELEPORT ➔ Central View" }
+        ]
+      },
+      {
+        id: 2,
+        name: "Organic Produce & Slow Living Hub",
+        shortName: "3. Produce Hub",
+        desc: "Central open marketplace featuring fresh organic fruits, herbal tea stalls, handmade soaps, and interactive workshops.",
+        textureUrl: null, // Remains procedural canvas
+        x: 140, y: 75,
+        nextId: 3,
+        prevId: 1,
+        specs: [
+          "Low-height timber display units with terracotta ceramic serving ware.",
+          "Interactive poster boards highlighting local eco-initiatives & zero-waste design.",
+          "Diffused sunlight filtering through soft linen roof drapes."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.25, targetNode: 3, label: "TELEPORT ➔ Open Tea Lounge & Seating" },
+          { phi: -0.1, theta: -2.8, targetNode: 1, label: "TELEPORT ➔ Street View" }
+        ]
+      },
+      {
+        id: 3,
+        name: "Open-Air Tea Lounge & Bamboo Seating",
+        shortName: "4. Tea Lounge",
+        desc: "Relaxed communal seating area with low bamboo chairs, jute floor cushions, artisanal beverage counters, and ambient background music.",
+        textureUrl: null,
+        x: 185, y: 75,
+        nextId: 4,
+        prevId: 2,
+        specs: [
+          "Ergonomic bamboo chairs with cream linen upholstery.",
+          "Floating fairy light canopy creating an inviting communal gathering spot.",
+          "Integrated waste sorting bins built with natural timber slats."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.45, targetNode: 4, label: "TELEPORT ➔ Amphitheatre & Event Stage" },
+          { phi: -0.1, theta: -2.9, targetNode: 2, label: "TELEPORT ➔ Produce Hub" }
+        ]
+      },
+      {
+        id: 4,
+        name: "Festive Amphitheatre & Live Performance Stage",
+        shortName: "5. Event Stage",
+        desc: "Outdoor circular arena for live music, cultural workshops, story sessions, and community gatherings under the lit canopy.",
+        textureUrl: null,
+        x: 220, y: 130,
+        nextId: null,
+        prevId: 3,
+        specs: [
+          "Sunken wooden deck stage surrounded by terraced lawn seating.",
+          "Festive canopy focal ring with layered macramé chandeliers.",
+          "Low-impact LED stage lighting powered by solar micro-grids."
+        ],
+        portals: [
+          { phi: -0.1, theta: 3.0, targetNode: 3, label: "TELEPORT ➔ Tea Lounge" },
+          { phi: 0, theta: 0, targetNode: 0, label: "TELEPORT ➔ Central View" }
+        ]
+      }
+    ];
+
+    let currentState = {
+      currentNodeIndex: 0,
+      isVR: false,
+      isAudioPlaying: false,
+      lon: 0,
+      lat: 0,
+      fov: 75,
+      isUserInteracting: false,
+      onPointerDownPointerX: 0,
+      onPointerDownPointerY: 0,
+      onPointerDownLon: 0,
+      onPointerDownLat: 0,
+      exploredAngles: new Set(),
+      nodeCompletionStatus: [false, false, false, false, false]
+    };
+
+    let scene, camera, renderer, skyMesh;
+    let portalGroup;
+    let container = document.getElementById('webgl-container');
+    let audioContext;
+
+    // Procedural Fallback generator for Nodes 3,4,5
+    function createProceduralPanoramaTexture(nodeIndex) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+
+      const node = MARKET_NODES[nodeIndex];
+
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      skyGradient.addColorStop(0, '#3b2319');
+      skyGradient.addColorStop(0.25, '#733e2b');
+      skyGradient.addColorStop(0.45, '#c2623a');
+      skyGradient.addColorStop(0.55, '#e08a53');
+      skyGradient.addColorStop(0.65, '#bd7148');
+      skyGradient.addColorStop(0.85, '#543d31');
+      skyGradient.addColorStop(1, '#2b1e17');
+      
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      const drapeColors = ['rgba(194, 76, 52, 0.88)', 'rgba(235, 138, 108, 0.82)', 'rgba(242, 203, 179, 0.75)', 'rgba(163, 60, 41, 0.9)'];
+      for (let i = 0; i < 8; i++) {
+        const xStart = i * 260 - 50;
+        ctx.fillStyle = drapeColors[i % drapeColors.length];
+        ctx.beginPath();
+        ctx.moveTo(xStart, 120);
+        ctx.bezierCurveTo(xStart + 130, 290, xStart + 220, 280, xStart + 320, 140);
+        ctx.bezierCurveTo(xStart + 200, 220, xStart + 100, 210, xStart, 120);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = '#c49862';
+      ctx.lineWidth = 12;
+      for (let x = 80; x < canvas.width; x += 320) {
+        ctx.beginPath(); ctx.moveTo(x, 150); ctx.lineTo(x - 90, 680); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, 150); ctx.lineTo(x + 90, 680); ctx.stroke();
+        ctx.strokeStyle = '#9c7341'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(x, 150); ctx.lineTo(x, 680); ctx.stroke();
+        ctx.strokeStyle = '#c49862'; ctx.lineWidth = 12;
+      }
+
+      ctx.strokeStyle = 'rgba(255, 230, 170, 0.85)';
+      ctx.lineWidth = 2;
+      for (let y = 200; y <= 340; y += 45) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        for (let x = 0; x < canvas.width; x += 120) {
+          ctx.quadraticCurveTo(x + 60, y + 25, x + 120, y);
+        }
+        ctx.stroke();
+      }
+
+      for (let x = 30; x < canvas.width; x += 70) {
+        const yVal = 210 + Math.sin(x * 0.05) * 15;
+        const glowRad = ctx.createRadialGradient(x, yVal, 2, x, yVal, 16);
+        glowRad.addColorStop(0, 'rgba(255, 220, 130, 1)');
+        glowRad.addColorStop(0.4, 'rgba(245, 158, 11, 0.6)');
+        glowRad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = glowRad;
+        ctx.beginPath(); ctx.arc(x, yVal, 16, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(x, yVal, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      const floorGrad = ctx.createLinearGradient(0, 580, 0, canvas.height);
+      floorGrad.addColorStop(0, '#3a3328');
+      floorGrad.addColorStop(0.3, '#2a261f');
+      floorGrad.addColorStop(1, '#171410');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(0, 580, canvas.width, 444);
+
+      for (let x = 60; x < canvas.width; x += 220) {
+        ctx.fillStyle = '#6b4f3b'; ctx.fillRect(x, 620, 150, 120);
+        ctx.fillStyle = '#a68062'; ctx.fillRect(x - 10, 610, 170, 15);
+        ctx.fillStyle = (x % 3 === 0) ? '#d97757' : (x % 3 === 1 ? '#e0b868' : '#738a6e');
+        ctx.fillRect(x + 15, 570, 35, 40);
+        ctx.fillStyle = '#f0d9c0'; ctx.fillRect(x + 65, 580, 25, 30);
+        ctx.fillStyle = '#8c5946'; ctx.fillRect(x + 105, 565, 30, 45);
+      }
+
+      ctx.font = 'bold 24px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255, 245, 230, 0.85)';
+      ctx.textAlign = 'center';
+      ctx.fillText(`PURNA BAZAAR BOHO MARKETPLACE: ${node.name.toUpperCase()}`, canvas.width / 2, 90);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    // Handles switching between real JPGs and Procedural Canvas Textures
+    function setNodeTexture(index) {
+        const node = MARKET_NODES[index];
+        if (node.textureUrl) {
+            new THREE.TextureLoader().load(node.textureUrl, function(texture) {
+                texture.minFilter = THREE.LinearFilter;
+                skyMesh.material.map = texture;
+                skyMesh.material.needsUpdate = true;
+            });
+        } else {
+            const texture = createProceduralPanoramaTexture(index);
+            skyMesh.material.map = texture;
+            skyMesh.material.needsUpdate = true;
+        }
+    }
+
+    function initThreeJS() {
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(currentState.fov, window.innerWidth / window.innerHeight, 1, 1100);
+      camera.target = new THREE.Vector3(0, 0, 0);
+
+      const geometry = new THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1);
+
+      // Start with a dark placeholder until the texture loads
+      const material = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      skyMesh = new THREE.Mesh(geometry, material);
+      scene.add(skyMesh);
+
+      // Load initial texture
+      setNodeTexture(currentState.currentNodeIndex);
+
+      portalGroup = new THREE.Group();
+      scene.add(portalGroup);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      container.addEventListener('pointerdown', onPointerDown);
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+      container.addEventListener('wheel', onDocumentMouseWheel);
+      window.addEventListener('resize', onWindowResize);
+      container.addEventListener('click', onCanvasClick);
+
+      update3DTeleportPortals();
+      updateUI();
+      renderKeyMap();
+
+      animate();
+    }
+
+    function update3DTeleportPortals() {
+      while (portalGroup.children.length > 0) {
+        portalGroup.remove(portalGroup.children[0]);
+      }
+
+      const activeNode = MARKET_NODES[currentState.currentNodeIndex];
+
+      activeNode.portals.forEach(p => {
+        const portalRadius = 400;
+        const x = portalRadius * Math.cos(p.phi) * Math.sin(p.theta);
+        const y = portalRadius * Math.sin(p.phi);
+        const z = portalRadius * Math.cos(p.phi) * Math.cos(p.theta);
+
+        const ringGeo = new THREE.RingGeometry(12, 18, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ 
+          color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.9 
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(x, y, z);
+        ringMesh.lookAt(0, 0, 0);
+        ringMesh.userData = { targetNode: p.targetNode, label: p.label };
+
+        portalGroup.add(ringMesh);
+      });
+    }
+
+    function onPointerDown(event) {
+      currentState.isUserInteracting = true;
+      currentState.onPointerDownPointerX = event.clientX;
+      currentState.onPointerDownPointerY = event.clientY;
+      currentState.onPointerDownLon = currentState.lon;
+      currentState.onPointerDownLat = currentState.lat;
+    }
+
+    function onPointerMove(event) {
+      if (!currentState.isUserInteracting) return;
+
+      currentState.lon = (currentState.onPointerDownPointerX - event.clientX) * 0.18 + currentState.onPointerDownLon;
+      currentState.lat = (event.clientY - currentState.onPointerDownPointerY) * 0.18 + currentState.onPointerDownLat;
+      currentState.lat = Math.max(-85, Math.min(85, currentState.lat));
+
+      const normalizedAngle = Math.floor(((currentState.lon % 360) + 360) % 360 / 30);
+      currentState.exploredAngles.add(normalizedAngle);
+      updateExplorationProgress();
+      renderKeyMap();
+    }
+
+    function onPointerUp() {
+      currentState.isUserInteracting = false;
+    }
+
+    function onDocumentMouseWheel(event) {
+      currentState.fov += event.deltaY * 0.05;
+      currentState.fov = Math.max(40, Math.min(100, currentState.fov));
+      camera.fov = currentState.fov;
+      camera.updateProjectionMatrix();
+      document.getElementById('fov-angle-display').innerText = `FOV: ${Math.round(currentState.fov)}°`;
+      renderKeyMap();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onCanvasClick(event) {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(portalGroup.children);
+      if (intersects.length > 0) {
+        teleportToNode(intersects[0].object.userData.targetNode);
+      }
+    }
+
+    function updateExplorationProgress() {
+      const progress = Math.min(100, Math.round((currentState.exploredAngles.size / 12) * 100));
+      document.getElementById('exploration-percentage').innerText = `${progress}%`;
+      document.getElementById('exploration-bar').style.width = `${progress}%`;
+
+      if (progress >= 80 && !currentState.nodeCompletionStatus[currentState.currentNodeIndex]) {
+        currentState.nodeCompletionStatus[currentState.currentNodeIndex] = true;
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-amber-400 text-slate-950 font-extrabold px-2 py-0.5 rounded";
+        document.getElementById('zone-status-badge').innerText = "ZONE COMPLETED ✓";
+        document.getElementById('exploration-status-text').innerText = "✅ Space explored! Ready to teleport to next zone.";
+        document.getElementById('exploration-status-text').className = "text-[10px] text-[#fbbf24] font-bold text-center pt-0.5";
+        playAudioChime(660, 0.2);
+      }
+    }
+
+    function teleportToNode(index) {
+      if (index === currentState.currentNodeIndex) return;
+
+      const targetNode = MARKET_NODES[index];
+      const flash = document.getElementById('teleport-flash');
+      
+      document.getElementById('teleport-target-name').innerText = targetNode.name;
+      flash.style.opacity = '1';
+      playAudioChime(350, 0.1);
+
+      setTimeout(() => {
+        currentState.currentNodeIndex = index;
+        currentState.exploredAngles.clear();
+        currentState.lon = 0;
+        currentState.lat = 0;
+
+        // Apply new texture (Real or Procedural)
+        setNodeTexture(index);
+
+        update3DTeleportPortals();
+        updateUI();
+        renderKeyMap();
+
+        setTimeout(() => {
+          flash.style.opacity = '0';
+        }, 150);
+      }, 350);
+    }
+
+    function updateUI() {
+      const node = MARKET_NODES[currentState.currentNodeIndex];
+
+      document.getElementById('node-title').innerText = node.name;
+      document.getElementById('node-desc').innerText = node.desc;
+      document.getElementById('footer-current-zone').innerText = `${node.id + 1}. ${node.shortName}`;
+
+      const isCompleted = currentState.nodeCompletionStatus[node.id];
+      if (isCompleted) {
+        document.getElementById('exploration-percentage').innerText = `100%`;
+        document.getElementById('exploration-bar').style.width = `100%`;
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-amber-400 text-slate-950 font-extrabold px-2 py-0.5 rounded";
+        document.getElementById('zone-status-badge').innerText = "ZONE COMPLETED ✓";
+        document.getElementById('exploration-status-text').innerText = "✅ Space fully inspected";
+      } else {
+        document.getElementById('exploration-percentage').innerText = `0%`;
+        document.getElementById('exploration-bar').style.width = `0%`;
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-[#f59e0b]/20 px-2 py-0.5 rounded text-[#fbbf24]";
+        document.getElementById('zone-status-badge').innerText = `EXPLORING ZONE ${node.id + 1}/5`;
+        document.getElementById('exploration-status-text').innerText = "Rotate view 360° to mark space as completed";
+      }
+
+      const specsContainer = document.getElementById('specs-list');
+      specsContainer.innerHTML = '';
+      node.specs.forEach(spec => {
+        const item = document.createElement('div');
+        item.className = "flex items-start gap-2 text-[11px] p-2 rounded-xl bg-black/40 border border-amber-950";
+        item.innerHTML = `
+          <i class="fa-solid fa-sparkles text-[#fbbf24] mt-0.5"></i>
+          <div class="text-amber-100">${spec}</div>
+        `;
+        specsContainer.appendChild(item);
+      });
+
+      const buttonsContainer = document.getElementById('teleport-buttons-container');
+      buttonsContainer.innerHTML = '';
+      MARKET_NODES.forEach((n, idx) => {
+        const btn = document.createElement('button');
+        const isActive = (idx === currentState.currentNodeIndex);
+        btn.className = isActive 
+          ? "w-full text-left p-2 rounded-xl bg-[#f59e0b]/25 border border-[#fbbf24] text-white font-bold text-[11px] flex items-center justify-between shadow-md"
+          : "w-full text-left p-2 rounded-xl bg-black/40 border border-amber-900/60 text-amber-200 hover:text-white hover:border-[#fbbf24]/40 font-medium text-[11px] flex items-center justify-between transition-all";
+        
+        btn.innerHTML = `
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-bolt ${isActive ? 'text-[#fbbf24]' : 'text-amber-600'}"></i>
+            ${n.shortName}
+          </span>
+          ${isActive ? '<span class="text-[9px] bg-[#fbbf24] text-slate-950 px-1.5 py-0.5 rounded font-mono uppercase font-bold">HERE</span>' : ''}
+        `;
+        btn.onclick = () => teleportToNode(idx);
+        buttonsContainer.appendChild(btn);
+      });
+
+      document.getElementById('btn-teleport-prev').disabled = (node.prevId === null);
+      if (node.nextId !== null) {
+        document.getElementById('btn-teleport-next').innerHTML = `
+          <span>TELEPORT TO NEXT</span>
+          <i class="fa-solid fa-bolt text-slate-950"></i>
+        `;
+        document.getElementById('btn-teleport-next').onclick = () => teleportToNode(node.nextId);
+      } else {
+        document.getElementById('btn-teleport-next').innerHTML = `
+          <span>RESTART TOUR</span>
+          <i class="fa-solid fa-rotate-left text-slate-950"></i>
+        `;
+        document.getElementById('btn-teleport-next').onclick = () => teleportToNode(0);
+      }
+    }
+
+    function renderKeyMap() {
+      const canvas = document.getElementById('keymap-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#140d0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 20) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 20) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      MARKET_NODES.forEach((n, idx) => {
+        if (idx === 0) ctx.moveTo(n.x, n.y);
+        else ctx.lineTo(n.x, n.y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      MARKET_NODES.forEach((n, idx) => {
+        const isSelected = (idx === currentState.currentNodeIndex);
+        ctx.fillStyle = isSelected ? 'rgba(245, 158, 11, 0.4)' : 'rgba(35, 20, 14, 0.85)';
+        ctx.strokeStyle = isSelected ? '#fbbf24' : 'rgba(245, 158, 11, 0.35)';
+        ctx.lineWidth = isSelected ? 2.5 : 1;
+
+        ctx.beginPath();
+        ctx.roundRect(n.x - 22, n.y - 14, 44, 28, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '9px Inter, sans-serif';
+        ctx.fillStyle = isSelected ? '#ffffff' : '#e0c8b3';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.shortName, n.x, n.y + 3);
+      });
+
+      const activeNode = MARKET_NODES[currentState.currentNodeIndex];
+      const radLon = THREE.MathUtils.degToRad(-currentState.lon - 90);
+      const coneLength = 32;
+      const halfFovRad = THREE.MathUtils.degToRad(currentState.fov / 2);
+
+      ctx.save();
+      ctx.translate(activeNode.x, activeNode.y);
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, coneLength, radLon - halfFovRad, radLon + halfFovRad);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b'; ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function initAudio() {
+      if (audioContext) return;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playAudioChime(freq = 520, duration = 0.15) {
+      if (!audioContext) return;
+      try {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.08, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+        osc.connect(gain); gain.connect(audioContext.destination);
+        osc.start(); osc.stop(audioContext.currentTime + duration);
+      } catch(e) {}
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (!currentState.isVR) {
+        const phi = THREE.MathUtils.degToRad(90 - currentState.lat);
+        const theta = THREE.MathUtils.degToRad(currentState.lon);
+        camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+        camera.target.y = 500 * Math.cos(phi);
+        camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+        camera.lookAt(camera.target);
+      }
+
+      if (portalGroup) {
+        portalGroup.children.forEach(ring => { ring.rotation.z += 0.01; });
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function() {
+      initThreeJS();
+
+      document.getElementById('btn-teleport-prev').addEventListener('click', () => {
+        const node = MARKET_NODES[currentState.currentNodeIndex];
+        if (node.prevId !== null) teleportToNode(node.prevId);
+      });
+
+      document.getElementById('keymap-canvas').addEventListener('click', (e) => {
+        const rect = e.target.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        let closestIdx = 0, minDistance = 9999;
+        
+        MARKET_NODES.forEach((node, idx) => {
+          const dist = Math.hypot(node.x - clickX, node.y - clickY);
+          if (dist < minDistance) {
+            minDistance = dist; closestIdx = idx;
+          }
+        });
+        if (minDistance < 40) teleportToNode(closestIdx);
+      });
+
+      document.getElementById('btn-audio').addEventListener('click', () => {
+        initAudio();
+        currentState.isAudioPlaying = !currentState.isAudioPlaying;
+        document.getElementById('btn-audio').innerHTML = currentState.isAudioPlaying 
+          ? `<i class="fa-solid fa-volume-high text-[#fbbf24]"></i>` 
+          : `<i class="fa-solid fa-volume-xmark text-sm"></i>`;
+      });
+
+      document.getElementById('btn-fullscreen').addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
         }
       });
-    </script>
-</head>
-<body>
-    <!-- Added mouse-based raycaster so you can click buttons directly with a mouse on a PC -->
-    <a-scene cursor="raycaster: .clickable; rayOrigin: mouse;">
-      <!-- Asset Management System: Pre-load the images -->
-      <a-assets>
-        <!-- The IDs are used to reference the images later -->
-        <img id="central-view" src="option 2.jpg" crossorigin="anonymous">
-        <img id="street-view" src="option 1_2.jpg" crossorigin="anonymous">
-      </a-assets>
 
-      <!-- The 360 Background (Starts with Central View / Option 2) -->
-      <a-sky id="main-sky" src="#central-view" rotation="0 -90 0"></a-sky>
+      document.getElementById('btn-reset-view').addEventListener('click', () => {
+        currentState.lon = 0; currentState.lat = 0; currentState.fov = 75;
+        camera.fov = 75; camera.updateProjectionMatrix(); renderKeyMap();
+        playAudioChime(300, 0.1);
+      });
 
-      <!-- UI Panels in VR Space for Navigation -->
-      
-      <!-- Button to switch to Street View (Option 1) -->
-      <a-entity position="-1.5 1.5 -3" 
-                geometry="primitive: plane; width: 2; height: 0.6" 
-                material="color: #333333; opacity: 0.9; shader: flat; border-radius: 0.1;" 
-                text="value: Go to Street View; align: center; width: 4; color: white"
-                scene-switcher="targetSrc: #street-view"
-                class="clickable">
-      </a-entity>
+      document.getElementById('btn-enter-vr-headset').addEventListener('click', async () => {
+        initAudio();
+        if (navigator.xr) {
+          try {
+            const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
+            if (isSupported) {
+              const session = await navigator.xr.requestSession('immersive-vr');
+              renderer.xr.setSession(session);
+              return;
+            }
+          } catch (err) {}
+        }
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      });
 
-      <!-- Button to switch to Central View (Option 2) -->
-      <a-entity position="1.5 1.5 -3" 
-                geometry="primitive: plane; width: 2; height: 0.6" 
-                material="color: #333333; opacity: 0.9; shader: flat" 
-                text="value: Enter Central Market; align: center; width: 4; color: white"
-                scene-switcher="targetSrc: #central-view"
-                class="clickable">
-      </a-entity>
+      document.getElementById('toggle-left-panel').addEventListener('click', () => {
+        document.getElementById('left-panel').classList.toggle('-translate-x-full');
+      });
 
-      <!-- Camera and Cursor (Required for clicking things in VR) -->
-      <a-entity camera look-controls position="0 1.6 0">
-        <!-- The reticle/cursor allows users to "click" by staring (fusing) -->
-        <a-cursor id="cursor"
-                  color="#FFD700" 
-                  fuse="true"
-                  fuse-timeout="1500"
-                  animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1"
-                  animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 1500; from: 1 1 1; to: 0.1 0.1 0.1"
-                  raycaster="objects: .clickable">
-        </a-cursor>
-      </a-entity>
-      
-    </a-scene>
+      document.getElementById('toggle-right-panel').addEventListener('click', () => {
+        document.getElementById('right-panel').classList.toggle('translate-x-full');
+      });
+    };
+  </script>
 </body>
 </html>
