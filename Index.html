@@ -1,21 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="utf-8">
-    <title>360 VR Viewer</title>
-    <meta name="description" content="360-degree VR Viewer">
-    <!-- Load the A-Frame WebVR library -->
+    <title>Heritage Market 360 VR Experience</title>
+    <meta name="description" content="Interactive 360 VR Viewer for the Heritage Market">
+    <!-- Load A-Frame WebVR Library -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  </head>
-  <body>
-    <a-scene>
-      <!-- Replace 'your-360-image.jpg' with the exact name of your uploaded image -->
-      <a-sky src="your-360-image.jpg" rotation="0 -130 0"></a-sky>
+
+    <!-- Custom Script to handle switching environments in VR -->
+    <script>
+      AFRAME.registerComponent('scene-switcher', {
+        schema: {
+          targetSrc: { type: 'string' }
+        },
+        init: function () {
+          let el = this.el;
+          let target = this.data.targetSrc;
+
+          // When this entity is clicked, change the sky background instantly
+          el.addEventListener('click', function () {
+            let sky = document.querySelector('#main-sky');
+            sky.setAttribute('src', target);
+          });
+
+          // Add hover effects for the cursor
+          el.addEventListener('mouseenter', function () {
+            el.setAttribute('scale', '1.1 1.1 1.1');
+            el.setAttribute('material', 'color: #4CAF50'); // Turn green on hover
+          });
+          el.addEventListener('mouseleave', function () {
+            el.setAttribute('scale', '1 1 1');
+            el.setAttribute('material', 'color: #333333'); // Revert to dark gray
+          });
+        }
+      });
+    </script>
+</head>
+<body>
+    <!-- Added mouse-based raycaster so you can click buttons directly with a mouse on a PC -->
+    <a-scene cursor="raycaster: .clickable; rayOrigin: mouse;">
+      <!-- Asset Management System: Pre-load the images -->
+      <a-assets>
+        <!-- The IDs are used to reference the images later -->
+        <img id="central-view" src="option 2.jpg" crossorigin="anonymous">
+        <img id="street-view" src="option 1_2.jpg" crossorigin="anonymous">
+      </a-assets>
+
+      <!-- The 360 Background (Starts with Central View / Option 2) -->
+      <a-sky id="main-sky" src="#central-view" rotation="0 -90 0"></a-sky>
+
+      <!-- UI Panels in VR Space for Navigation -->
       
-      <!-- Optional: Add a camera with cursor for interactivity -->
-      <a-camera position="0 1.6 0">
-        <a-cursor color="yellow"></a-cursor>
-      </a-camera>
+      <!-- Button to switch to Street View (Option 1) -->
+      <a-entity position="-1.5 1.5 -3" 
+                geometry="primitive: plane; width: 2; height: 0.6" 
+                material="color: #333333; opacity: 0.9; shader: flat; border-radius: 0.1;" 
+                text="value: Go to Street View; align: center; width: 4; color: white"
+                scene-switcher="targetSrc: #street-view"
+                class="clickable">
+      </a-entity>
+
+      <!-- Button to switch to Central View (Option 2) -->
+      <a-entity position="1.5 1.5 -3" 
+                geometry="primitive: plane; width: 2; height: 0.6" 
+                material="color: #333333; opacity: 0.9; shader: flat" 
+                text="value: Enter Central Market; align: center; width: 4; color: white"
+                scene-switcher="targetSrc: #central-view"
+                class="clickable">
+      </a-entity>
+
+      <!-- Camera and Cursor (Required for clicking things in VR) -->
+      <a-entity camera look-controls position="0 1.6 0">
+        <!-- The reticle/cursor allows users to "click" by staring (fusing) -->
+        <a-cursor id="cursor"
+                  color="#FFD700" 
+                  fuse="true"
+                  fuse-timeout="1500"
+                  animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1"
+                  animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 1500; from: 1 1 1; to: 0.1 0.1 0.1"
+                  raycaster="objects: .clickable">
+        </a-cursor>
+      </a-entity>
+      
     </a-scene>
-  </body>
+</body>
 </html>
