@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Purna Market Redevelopment - VR Teleport Showcase</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0c0806;
+      color: #f7ebe1;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Glassmorphism Styling - Warm Boho Theme */
+    .glass-panel {
+      background: rgba(26, 16, 12, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 12px rgba(245, 158, 11, 0.08);
+    }
+
+    .glass-panel-glow {
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.4), inset 0 0 15px rgba(245, 158, 11, 0.2);
+      border-color: rgba(251, 191, 36, 0.8);
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(20, 12, 8, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(245, 158, 11, 0.5);
+      border-radius: 4px;
+    }
+
+    /* Keymap Canvas */
+    #keymap-canvas {
+      border-radius: 8px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: #140d0a;
+    }
+
+    /* Teleport Warp Overlay Animation */
+    #teleport-flash {
+      pointer-events: none;
+      transition: opacity 0.35s ease-in-out;
+    }
+
+    /* Pulse effects */
+    @keyframes portalPulse {
+      0% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.08); opacity: 1; }
+      100% { transform: scale(1); opacity: 0.8; }
+    }
+    .portal-active-pulse {
+      animation: portalPulse 1.6s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden select-none">
+
+  <!-- WebGL 360 VR Canvas Container -->
+  <div id="webgl-container" class="absolute inset-0 z-0 cursor-grab active:cursor-grabbing"></div>
+
+  <!-- Teleport Warp Transition Screen Flash -->
+  <div id="teleport-flash" class="absolute inset-0 z-40 bg-amber-950 opacity-0 pointer-events-none flex flex-col items-center justify-center">
+    <div class="text-[#fbbf24] text-2xl font-bold tracking-widest uppercase flex items-center gap-3">
+      <i class="fa-solid fa-sparkles fa-spin text-3xl"></i>
+      <span>TELEPORTING...</span>
+    </div>
+    <div id="teleport-target-name" class="text-amber-100 text-sm mt-2 font-mono">Artisan Market Canopy & Plaza</div>
+  </div>
+
+  <!-- Top Teleport Status Banner -->
+  <div id="teleport-banner" class="absolute top-16 left-1/2 -translate-x-1/2 z-20 glass-panel glass-panel-glow px-5 py-2.5 rounded-full flex items-center gap-4 text-xs border border-[#f59e0b]/40 pointer-events-auto shadow-2xl">
+    <div class="flex items-center gap-2 text-[#fbbf24] font-bold">
+      <i class="fa-solid fa-sun fa-spin text-sm" id="status-spinner"></i>
+      <span id="zone-status-badge" class="uppercase tracking-wider font-mono text-[11px] bg-[#f59e0b]/20 px-2 py-0.5 rounded text-[#fbbf24]">EXPLORING ZONE 1/5</span>
+    </div>
+    <div class="h-3 w-px bg-[#f59e0b]/30"></div>
+    <div class="text-white text-[11px] flex items-center gap-2" id="teleport-guidance-text">
+      <span class="text-amber-200">Look around 360° to explore, or click any Teleport Portal</span>
+    </div>
+  </div>
+
+  <!-- VR Center Gaze Reticle -->
+  <div id="reticle" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none flex flex-col items-center justify-center">
+    <div id="reticle-dot" class="w-5 h-5 border-2 border-[#fbbf24] rounded-full flex items-center justify-center transition-all duration-200 shadow-lg">
+      <div class="w-1.5 h-1.5 bg-[#fbbf24] rounded-full"></div>
+    </div>
+    <span id="reticle-label" class="mt-2 text-[10px] tracking-widest uppercase font-semibold text-[#fbbf24] bg-[#1a100c]/90 px-2 py-0.5 rounded border border-[#f59e0b]/40 shadow-xl hidden">
+      GAZE TELEPORT
+    </span>
+  </div>
+
+  <!-- Top Application Header -->
+  <header class="absolute top-0 left-0 right-0 z-30 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-[#0e0805]/95 to-transparent pointer-events-auto">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-[#f59e0b]/20 border border-[#fbbf24]/50 flex items-center justify-center text-[#fbbf24] shadow-md">
+        <i class="fa-solid fa-campground text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold text-white tracking-wider uppercase flex items-center gap-2">
+          PURNA BAZAAR REDEVELOPMENT
+          <span class="text-[10px] px-2 py-0.5 rounded bg-[#f59e0b]/25 border border-[#fbbf24]/60 text-[#fbbf24] font-mono">BOHO MARKETPLACE VR</span>
+        </h1>
+        <p class="text-[11px] text-amber-200/80 hidden sm:block">Open-Air Artisan Bazaar • Canopy & String Light Architecture Showcase</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Mode Switcher -->
+      <div class="glass-panel p-1 rounded-xl flex items-center text-xs">
+        <button id="btn-mode-web" class="px-3 py-1.5 rounded-lg font-semibold transition-all bg-[#f59e0b] text-slate-950 shadow-md">
+          <i class="fa-solid fa-desktop mr-1.5"></i>Web 360 Mode
+        </button>
+        <button id="btn-mode-vr" class="px-3 py-1.5 rounded-lg font-semibold text-amber-200 hover:text-white transition-all">
+          <i class="fa-solid fa-vr-cardboard mr-1.5"></i>VR Headset
+        </button>
+      </div>
+
+      <!-- Sound Ambiance Toggle -->
+      <button id="btn-audio" class="glass-panel p-2.5 rounded-xl text-amber-200 hover:text-[#fbbf24] transition-all" title="Toggle Market Ambiance Sound">
+        <i class="fa-solid fa-volume-xmark text-sm"></i>
+      </button>
+
+      <!-- Fullscreen Toggle -->
+      <button id="btn-fullscreen" class="glass-panel p-2.5 rounded-xl text-amber-200 hover:text-[#fbbf24] transition-all" title="Toggle Fullscreen">
+        <i class="fa-solid fa-expand text-sm"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Left Side Panel: Node Specs & Completion Meter -->
+  <aside id="left-panel" class="absolute top-20 left-4 z-30 w-72 sm:w-80 glass-panel rounded-2xl p-4 transition-all duration-300 max-h-[calc(100vh-160px)] flex flex-col pointer-events-auto">
+    <div class="flex items-center justify-between pb-3 border-b border-[#f59e0b]/25">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-[#fbbf24] flex items-center gap-2">
+        <i class="fa-solid fa-[#fbbf24] fa-store"></i> Active Zone Specs
+      </h2>
+      <button id="toggle-left-panel" class="text-xs text-amber-400 hover:text-white">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+    </div>
+
+    <div class="mt-3 overflow-y-auto space-y-3 text-xs pr-1 flex-1">
+      <!-- Active Space Header Card -->
+      <div class="p-3 rounded-xl bg-[#f59e0b]/15 border border-[#fbbf24]/40">
+        <div class="text-[10px] text-[#fbbf24] uppercase tracking-widest font-mono font-semibold mb-1">Current Teleport Zone</div>
+        <div id="node-title" class="text-sm font-extrabold text-white mb-1">Entrance Canopy & Festive Courtyard</div>
+        <p id="node-desc" class="text-[11px] text-amber-100/85 leading-relaxed">
+          Open-air greeting plaza enclosed by draped terracotta fabric sails, bamboo tripod framing, string lights, and macramé lamps.
+        </p>
+      </div>
+
+      <!-- Exploration Progress Meter -->
+      <div class="p-3 rounded-xl bg-black/50 border border-amber-900/60 space-y-1.5">
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="text-amber-200 font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-eye text-[#fbbf24]"></i> Space Inspection Progress
+          </span>
+          <span id="exploration-percentage" class="text-[#fbbf24] font-mono font-bold">0%</span>
+        </div>
+        <div class="w-full h-2 bg-amber-950 rounded-full overflow-hidden border border-amber-800/40">
+          <div id="exploration-bar" class="h-full bg-gradient-to-r from-amber-500 to-[#fbbf24] transition-all duration-300 w-0"></div>
+        </div>
+        <div id="exploration-status-text" class="text-[10px] text-amber-300/80 italic text-center pt-0.5">
+          Rotate view 360° to mark space as completed
+        </div>
+      </div>
+
+      <!-- Architectural Specs -->
+      <div class="space-y-2">
+        <div class="font-semibold text-[#fbbf24] text-[11px] uppercase tracking-wider">Design Highlights</div>
+        
+        <div id="specs-list" class="space-y-2">
+          <!-- Dynamically populated per node -->
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Side Panel: Teleport Hub & Site Map -->
+  <aside id="right-panel" class="absolute top-20 right-4 z-30 w-72 sm:w-80 glass-panel rounded-2xl p-4 transition-all duration-300 max-h-[calc(100vh-160px)] flex flex-col pointer-events-auto">
+    <div class="flex items-center justify-between pb-3 border-b border-[#f59e0b]/25">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-[#fbbf24] flex items-center gap-2">
+        <i class="fa-solid fa-location-dot"></i> Teleport Hub & Key Map
+      </h2>
+      <button id="toggle-right-panel" class="text-xs text-amber-400 hover:text-white">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+
+    <div class="mt-3 overflow-y-auto space-y-4 text-xs pr-1 flex-1">
+      <!-- Direct Teleport Selection List -->
+      <div>
+        <div class="text-[10px] uppercase font-semibold text-amber-200/80 tracking-wider mb-2">Instant Teleport Destinations</div>
+        <div class="space-y-1.5" id="teleport-buttons-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- Site Plan Key Map Widget -->
+      <div class="pt-2 border-t border-[#f59e0b]/20">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[10px] uppercase font-semibold text-[#fbbf24] tracking-wider">
+            <i class="fa-solid fa-map-location-dot mr-1"></i> Interactive Site Plan
+          </span>
+          <span class="text-[10px] text-amber-300 font-mono" id="fov-angle-display">FOV: 75°</span>
+        </div>
+
+        <!-- Canvas Mini Map -->
+        <div class="relative flex justify-center">
+          <canvas id="keymap-canvas" width="260" height="170" class="cursor-pointer shadow-inner" title="Click any node on map to teleport instantly"></canvas>
+          <div class="absolute bottom-2 left-3 bg-black/90 text-[9px] text-[#fbbf24] px-2 py-0.5 rounded border border-[#f59e0b]/40 pointer-events-none flex items-center gap-1.5 font-mono">
+            <span class="w-2 h-2 rounded-full bg-amber-500 inline-block animate-ping"></span>
+            <span>Live Camera Node</span>
+          </div>
+        </div>
+        <p class="text-[10px] text-amber-300/70 mt-1.5 text-center">Click any zone box on map to teleport</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Footer Teleport Action Bar -->
+  <footer class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-auto">
+    <!-- Teleport Action Bar -->
+    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 text-xs border border-[#f59e0b]/40 shadow-2xl">
+      <button id="btn-teleport-prev" class="px-3.5 py-2 rounded-xl bg-black/60 border border-amber-900 text-amber-200 hover:text-white font-medium flex items-center gap-2 text-[11px] disabled:opacity-40 transition-all">
+        <i class="fa-solid fa-arrow-left"></i> Prev Zone
+      </button>
+
+      <div class="text-center px-3">
+        <div class="text-[9px] text-[#fbbf24] font-mono uppercase tracking-widest">ACTIVE LOCATION</div>
+        <div id="footer-current-zone" class="text-xs font-extrabold text-white whitespace-nowrap">1. Entrance Canopy</div>
+      </div>
+
+      <button id="btn-teleport-next" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-[#fbbf24] text-slate-950 font-extrabold flex items-center gap-2 text-[11px] hover:from-amber-400 hover:to-amber-300 transition-all shadow-lg portal-active-pulse">
+        <span>TELEPORT TO NEXT</span>
+        <i class="fa-solid fa-bolt text-slate-950"></i>
+      </button>
+    </div>
+
+    <!-- VR Headset Action Controls -->
+    <div class="flex items-center gap-3">
+      <button id="btn-enter-vr-headset" class="glass-panel glass-panel-glow px-6 py-2 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-[#fbbf24] hover:brightness-110 text-slate-950 font-extrabold text-xs tracking-wider uppercase flex items-center gap-2 transition-all transform hover:scale-105 shadow-xl">
+        <i class="fa-solid fa-vr-cardboard text-base"></i>
+        <span>ENTER VR HEADSET MODE</span>
+      </button>
+
+      <button id="btn-reset-view" class="glass-panel p-2 rounded-full text-amber-200 hover:text-[#fbbf24] transition-all" title="Reset Camera View Angle">
+        <i class="fa-solid fa-arrows-to-circle text-sm"></i>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Modal Dialog for Detailed Architectural Specs -->
+  <div id="modal-backdrop" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center p-4">
+    <div id="modal-box" class="glass-panel rounded-2xl max-w-md w-full p-6 border border-[#f59e0b]/50 transform scale-95 transition-all duration-300 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-[#f59e0b]/25">
+        <h3 id="modal-title" class="text-sm font-bold text-[#fbbf24] uppercase tracking-wider">Spatial Feature Info</h3>
+        <button id="btn-close-modal" class="text-amber-300 hover:text-white text-base">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="modal-body" class="mt-4 text-xs text-amber-100/90 leading-relaxed space-y-3">
+        <!-- Body content -->
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button id="btn-modal-action" class="px-4 py-2 rounded-xl bg-[#f59e0b] text-slate-950 font-bold text-xs hover:bg-[#fbbf24] transition-all">
+          Got It
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Purna Market Redevelopment - Open-Air Festive Artisan Bazaar Spatial Nodes
+    const MARKET_NODES = [
+      {
+        id: 0,
+        name: "Festive Entrance Canopy & Bamboo Courtyard",
+        shortName: "1. Entrance Canopy",
+        desc: "Open-air greeting plaza shaded by draped terracotta fabric sails, bamboo tripod framing, string lights, and handcrafted macramé lamps.",
+        x: 50, y: 130, // Map Coordinates
+        nextId: 1,
+        prevId: null,
+        specs: [
+          "Layered terracotta & peach fabric tension sails providing soft ambient shade.",
+          "Structural bamboo tripod poles linked with natural jute rope lashings.",
+          "Warm Edison bulb string light grid creating a cozy twilight atmosphere."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.15, targetNode: 1, label: "TELEPORT ➔ Artisan Craft Stalls" }
+        ]
+      },
+      {
+        id: 1,
+        name: "Artisan Craft & Handloom Pavilion",
+        shortName: "2. Craft Stalls",
+        desc: "Boutique market alley with wooden display tables, woven tapestries, organic cotton apparel, and macramé hanging planters.",
+        x: 95, y: 75,
+        nextId: 2,
+        prevId: 0,
+        specs: [
+          "Recycled wood display counters for handmade crafts and sustainable textiles.",
+          "Overhead macramé fringe lamps and photo-print display lines.",
+          "Permeable turf flooring framed with potted monstera and ficus plants."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.35, targetNode: 2, label: "TELEPORT ➔ Organic Produce & Slow Living Hub" },
+          { phi: -0.1, theta: 3.1, targetNode: 0, label: "TELEPORT ➔ Entrance Canopy" }
+        ]
+      },
+      {
+        id: 2,
+        name: "Organic Produce & Slow Living Hub",
+        shortName: "3. Produce Hub",
+        desc: "Central open marketplace featuring fresh organic fruits, herbal tea stalls, handmade soaps, and interactive workshops.",
+        x: 140, y: 75,
+        nextId: 3,
+        prevId: 1,
+        specs: [
+          "Low-height timber display units with terracotta ceramic serving ware.",
+          "Interactive poster boards highlighting local eco-initiatives & zero-waste design.",
+          "Diffused sunlight filtering through soft linen roof drapes."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.25, targetNode: 3, label: "TELEPORT ➔ Open Tea Lounge & Seating" },
+          { phi: -0.1, theta: -2.8, targetNode: 1, label: "TELEPORT ➔ Craft Stalls" }
+        ]
+      },
+      {
+        id: 3,
+        name: "Open-Air Tea Lounge & Bamboo Seating",
+        shortName: "4. Tea Lounge",
+        desc: "Relaxed communal seating area with low bamboo chairs, jute floor cushions, artisanal beverage counters, and ambient background music.",
+        x: 185, y: 75,
+        nextId: 4,
+        prevId: 2,
+        specs: [
+          "Ergonomic bamboo chairs with cream linen upholstery.",
+          "Floating fairy light canopy creating an inviting communal gathering spot.",
+          "Integrated waste sorting bins built with natural timber slats."
+        ],
+        portals: [
+          { phi: -0.1, theta: 0.45, targetNode: 4, label: "TELEPORT ➔ Amphitheatre & Event Stage" },
+          { phi: -0.1, theta: -2.9, targetNode: 2, label: "TELEPORT ➔ Produce Hub" }
+        ]
+      },
+      {
+        id: 4,
+        name: "Festive Amphitheatre & Live Performance Stage",
+        shortName: "5. Event Stage",
+        desc: "Outdoor circular arena for live music, cultural workshops, story sessions, and community gatherings under the lit canopy.",
+        x: 220, y: 130,
+        nextId: null,
+        prevId: 3,
+        specs: [
+          "Sunken wooden deck stage surrounded by terraced lawn seating.",
+          "Festive canopy focal ring with layered macramé chandeliers.",
+          "Low-impact LED stage lighting powered by solar micro-grids."
+        ],
+        portals: [
+          { phi: -0.1, theta: 3.0, targetNode: 3, label: "TELEPORT ➔ Tea Lounge" },
+          { phi: 0, theta: 0, targetNode: 0, label: "TELEPORT ➔ Entrance Canopy" }
+        ]
+      }
+    ];
+
+    let currentState = {
+      currentNodeIndex: 0,
+      isVR: false,
+      isAudioPlaying: false,
+      lon: 0,
+      lat: 0,
+      fov: 75,
+      isUserInteracting: false,
+      onPointerDownPointerX: 0,
+      onPointerDownPointerY: 0,
+      onPointerDownLon: 0,
+      onPointerDownLat: 0,
+      exploredAngles: new Set(),
+      nodeCompletionStatus: [false, false, false, false, false]
+    };
+
+    let scene, camera, renderer, skyMesh;
+    let portalGroup;
+    let container = document.getElementById('webgl-container');
+    let audioContext;
+
+    function createProceduralPanoramaTexture(nodeIndex) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+
+      const node = MARKET_NODES[nodeIndex];
+
+      // Sunset / Twilight Sky Gradient (Boho Aesthetic)
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      skyGradient.addColorStop(0, '#3b2319');
+      skyGradient.addColorStop(0.25, '#733e2b');
+      skyGradient.addColorStop(0.45, '#c2623a');
+      skyGradient.addColorStop(0.55, '#e08a53');
+      skyGradient.addColorStop(0.65, '#bd7148');
+      skyGradient.addColorStop(0.85, '#543d31');
+      skyGradient.addColorStop(1, '#2b1e17');
+      
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Festive Terracotta & Peach Draped Fabric Canopy Sails
+      ctx.save();
+      const drapeColors = ['rgba(194, 76, 52, 0.88)', 'rgba(235, 138, 108, 0.82)', 'rgba(242, 203, 179, 0.75)', 'rgba(163, 60, 41, 0.9)'];
+      for (let i = 0; i < 8; i++) {
+        const xStart = i * 260 - 50;
+        ctx.fillStyle = drapeColors[i % drapeColors.length];
+        ctx.beginPath();
+        ctx.moveTo(xStart, 120);
+        ctx.bezierCurveTo(xStart + 130, 290, xStart + 220, 280, xStart + 320, 140);
+        ctx.bezierCurveTo(xStart + 200, 220, xStart + 100, 210, xStart, 120);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Bamboo Tripod Poles & Framework
+      ctx.strokeStyle = '#c49862';
+      ctx.lineWidth = 12;
+      for (let x = 80; x < canvas.width; x += 320) {
+        // Left slanting pole
+        ctx.beginPath();
+        ctx.moveTo(x, 150);
+        ctx.lineTo(x - 90, 680);
+        ctx.stroke();
+
+        // Right slanting pole
+        ctx.beginPath();
+        ctx.moveTo(x, 150);
+        ctx.lineTo(x + 90, 680);
+        ctx.stroke();
+
+        // Vertical support
+        ctx.strokeStyle = '#9c7341';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(x, 150);
+        ctx.lineTo(x, 680);
+        ctx.stroke();
+        ctx.strokeStyle = '#c49862';
+        ctx.lineWidth = 12;
+      }
+
+      // Warm Edison String Lights & Fairy Light Swags
+      ctx.strokeStyle = 'rgba(255, 230, 170, 0.85)';
+      ctx.lineWidth = 2;
+      for (let y = 200; y <= 340; y += 45) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        for (let x = 0; x < canvas.width; x += 120) {
+          ctx.quadraticCurveTo(x + 60, y + 25, x + 120, y);
+        }
+        ctx.stroke();
+      }
+
+      // Glowing Edison Bulb Points
+      for (let x = 30; x < canvas.width; x += 70) {
+        const yVal = 210 + Math.sin(x * 0.05) * 15;
+        // Outer glow
+        const glowRad = ctx.createRadialGradient(x, yVal, 2, x, yVal, 16);
+        glowRad.addColorStop(0, 'rgba(255, 220, 130, 1)');
+        glowRad.addColorStop(0.4, 'rgba(245, 158, 11, 0.6)');
+        glowRad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = glowRad;
+        ctx.beginPath();
+        ctx.arc(x, yVal, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bulb center
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x, yVal, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Woven Macramé Pendant Lamps
+      for (let x = 180; x < canvas.width; x += 380) {
+        ctx.fillStyle = '#f2e3d3';
+        ctx.fillRect(x - 18, 260, 36, 45);
+        
+        // Fringe
+        ctx.strokeStyle = '#ded0bf';
+        ctx.lineWidth = 2;
+        for (let fx = x - 18; fx <= x + 18; fx += 4) {
+          ctx.beginPath();
+          ctx.moveTo(fx, 305);
+          ctx.lineTo(fx, 335);
+          ctx.stroke();
+        }
+
+        // Inner Warm Light
+        const lampGlow = ctx.createRadialGradient(x, 285, 2, x, 285, 30);
+        lampGlow.addColorStop(0, 'rgba(255, 240, 200, 0.9)');
+        lampGlow.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = lampGlow;
+        ctx.beginPath();
+        ctx.arc(x, 285, 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Synthetic Grass Turf / Wood Deck Flooring
+      const floorGrad = ctx.createLinearGradient(0, 580, 0, canvas.height);
+      floorGrad.addColorStop(0, '#3a3328');
+      floorGrad.addColorStop(0.3, '#2a261f');
+      floorGrad.addColorStop(1, '#171410');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(0, 580, canvas.width, 444);
+
+      // Wooden Artisan Stalls & Display Tables
+      for (let x = 60; x < canvas.width; x += 220) {
+        ctx.fillStyle = '#6b4f3b';
+        ctx.fillRect(x, 620, 150, 120);
+
+        // Table top trim
+        ctx.fillStyle = '#a68062';
+        ctx.fillRect(x - 10, 610, 170, 15);
+
+        // Display Products (Handicrafts, Macramé, Ceramics)
+        ctx.fillStyle = (x % 3 === 0) ? '#d97757' : (x % 3 === 1 ? '#e0b868' : '#738a6e');
+        ctx.fillRect(x + 15, 570, 35, 40);
+        ctx.fillStyle = '#f0d9c0';
+        ctx.fillRect(x + 65, 580, 25, 30);
+        ctx.fillStyle = '#8c5946';
+        ctx.fillRect(x + 105, 565, 30, 45);
+      }
+
+      // Lush Potted Greenery & Plants
+      for (let x = 10; x < canvas.width; x += 220) {
+        // Pot
+        ctx.fillStyle = '#b85e44';
+        ctx.beginPath();
+        ctx.moveTo(x + 180, 680);
+        ctx.lineTo(x + 210, 680);
+        ctx.lineTo(x + 205, 730);
+        ctx.lineTo(x + 185, 730);
+        ctx.closePath();
+        ctx.fill();
+
+        // Foliage
+        ctx.fillStyle = '#3d5936';
+        ctx.beginPath();
+        ctx.arc(x + 195, 660, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#527549';
+        ctx.beginPath();
+        ctx.arc(x + 185, 650, 20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Overhead Spatial Zone Banner
+      ctx.font = 'bold 24px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255, 245, 230, 0.85)';
+      ctx.textAlign = 'center';
+      ctx.fillText(`PURNA BAZAAR BOHO MARKETPLACE: ${node.name.toUpperCase()}`, canvas.width / 2, 90);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function initThreeJS() {
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(currentState.fov, window.innerWidth / window.innerHeight, 1, 1100);
+      camera.target = new THREE.Vector3(0, 0, 0);
+
+      // Panorama Sphere Mesh
+      const geometry = new THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1);
+
+      const texture = createProceduralPanoramaTexture(currentState.currentNodeIndex);
+      const material = new THREE.MeshBasicMaterial({ map: texture });
+
+      skyMesh = new THREE.Mesh(geometry, material);
+      scene.add(skyMesh);
+
+      // Group for 3D Teleport Markers in Scene
+      portalGroup = new THREE.Group();
+      scene.add(portalGroup);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      // Event Listeners for Panning
+      container.addEventListener('pointerdown', onPointerDown);
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+      container.addEventListener('wheel', onDocumentMouseWheel);
+      window.addEventListener('resize', onWindowResize);
+
+      // Raycaster for clicking 3D Teleport Portals
+      container.addEventListener('click', onCanvasClick);
+
+      update3DTeleportPortals();
+      updateUI();
+      renderKeyMap();
+
+      animate();
+    }
+
+    function update3DTeleportPortals() {
+      // Clear previous portals
+      while (portalGroup.children.length > 0) {
+        portalGroup.remove(portalGroup.children[0]);
+      }
+
+      const activeNode = MARKET_NODES[currentState.currentNodeIndex];
+
+      activeNode.portals.forEach(p => {
+        const portalRadius = 400;
+        const x = portalRadius * Math.cos(p.phi) * Math.sin(p.theta);
+        const y = portalRadius * Math.sin(p.phi);
+        const z = portalRadius * Math.cos(p.phi) * Math.cos(p.theta);
+
+        // Ground Teleport Ring Geometry - Warm Amber Palette
+        const ringGeo = new THREE.RingGeometry(12, 18, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ 
+          color: 0xf59e0b, 
+          side: THREE.DoubleSide, 
+          transparent: true, 
+          opacity: 0.9 
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(x, y, z);
+        ringMesh.lookAt(0, 0, 0);
+        ringMesh.userData = { targetNode: p.targetNode, label: p.label };
+
+        portalGroup.add(ringMesh);
+      });
+    }
+
+    function onPointerDown(event) {
+      currentState.isUserInteracting = true;
+      currentState.onPointerDownPointerX = event.clientX;
+      currentState.onPointerDownPointerY = event.clientY;
+      currentState.onPointerDownLon = currentState.lon;
+      currentState.onPointerDownLat = currentState.lat;
+    }
+
+    function onPointerMove(event) {
+      if (!currentState.isUserInteracting) return;
+
+      currentState.lon = (currentState.onPointerDownPointerX - event.clientX) * 0.18 + currentState.onPointerDownLon;
+      currentState.lat = (event.clientY - currentState.onPointerDownPointerY) * 0.18 + currentState.onPointerDownLat;
+
+      currentState.lat = Math.max(-85, Math.min(85, currentState.lat));
+
+      // Track explored viewing angles for progress meter
+      const normalizedAngle = Math.floor(((currentState.lon % 360) + 360) % 360 / 30);
+      currentState.exploredAngles.add(normalizedAngle);
+      updateExplorationProgress();
+
+      renderKeyMap();
+    }
+
+    function onPointerUp() {
+      currentState.isUserInteracting = false;
+    }
+
+    function onDocumentMouseWheel(event) {
+      currentState.fov += event.deltaY * 0.05;
+      currentState.fov = Math.max(40, Math.min(100, currentState.fov));
+      camera.fov = currentState.fov;
+      camera.updateProjectionMatrix();
+      document.getElementById('fov-angle-display').innerText = `FOV: ${Math.round(currentState.fov)}°`;
+      renderKeyMap();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onCanvasClick(event) {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(portalGroup.children);
+      if (intersects.length > 0) {
+        const targetNode = intersects[0].object.userData.targetNode;
+        teleportToNode(targetNode);
+      }
+    }
+
+    function updateExplorationProgress() {
+      const progress = Math.min(100, Math.round((currentState.exploredAngles.size / 12) * 100));
+      
+      document.getElementById('exploration-percentage').innerText = `${progress}%`;
+      document.getElementById('exploration-bar').style.width = `${progress}%`;
+
+      if (progress >= 80 && !currentState.nodeCompletionStatus[currentState.currentNodeIndex]) {
+        currentState.nodeCompletionStatus[currentState.currentNodeIndex] = true;
+        
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-amber-400 text-slate-950 font-extrabold px-2 py-0.5 rounded";
+        document.getElementById('zone-status-badge').innerText = "ZONE COMPLETED ✓";
+        document.getElementById('exploration-status-text').innerText = "✅ Space explored! Ready to teleport to next zone.";
+        document.getElementById('exploration-status-text').className = "text-[10px] text-[#fbbf24] font-bold text-center pt-0.5";
+
+        playAudioChime(660, 0.2);
+      }
+    }
+
+    function teleportToNode(index) {
+      if (index === currentState.currentNodeIndex) return;
+
+      const targetNode = MARKET_NODES[index];
+      const flash = document.getElementById('teleport-flash');
+      const targetName = document.getElementById('teleport-target-name');
+
+      targetName.innerText = targetNode.name;
+      flash.style.opacity = '1';
+
+      playAudioChime(350, 0.1);
+
+      setTimeout(() => {
+        currentState.currentNodeIndex = index;
+        currentState.exploredAngles.clear();
+        
+        currentState.lon = 0;
+        currentState.lat = 0;
+
+        skyMesh.material.map = createProceduralPanoramaTexture(index);
+
+        update3DTeleportPortals();
+        updateUI();
+        renderKeyMap();
+
+        setTimeout(() => {
+          flash.style.opacity = '0';
+        }, 150);
+      }, 350);
+    }
+
+    function updateUI() {
+      const node = MARKET_NODES[currentState.currentNodeIndex];
+
+      document.getElementById('node-title').innerText = node.name;
+      document.getElementById('node-desc').innerText = node.desc;
+      document.getElementById('footer-current-zone').innerText = `${indexToNum(node.id)}. ${node.shortName}`;
+
+      const isAlreadyCompleted = currentState.nodeCompletionStatus[node.id];
+      if (isAlreadyCompleted) {
+        document.getElementById('exploration-percentage').innerText = `100%`;
+        document.getElementById('exploration-bar').style.width = `100%`;
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-amber-400 text-slate-950 font-extrabold px-2 py-0.5 rounded";
+        document.getElementById('zone-status-badge').innerText = "ZONE COMPLETED ✓";
+        document.getElementById('exploration-status-text').innerText = "✅ Space fully inspected";
+      } else {
+        document.getElementById('exploration-percentage').innerText = `0%`;
+        document.getElementById('exploration-bar').style.width = `0%`;
+        document.getElementById('zone-status-badge').className = "uppercase tracking-wider font-mono text-[11px] bg-[#f59e0b]/20 px-2 py-0.5 rounded text-[#fbbf24]";
+        document.getElementById('zone-status-badge').innerText = `EXPLORING ZONE ${node.id + 1}/5`;
+        document.getElementById('exploration-status-text').innerText = "Rotate view 360° to mark space as completed";
+      }
+
+      // Populate Specs List
+      const specsContainer = document.getElementById('specs-list');
+      specsContainer.innerHTML = '';
+      node.specs.forEach(spec => {
+        const item = document.createElement('div');
+        item.className = "flex items-start gap-2 text-[11px] p-2 rounded-xl bg-black/40 border border-amber-950";
+        item.innerHTML = `
+          <i class="fa-solid fa-sparkles text-[#fbbf24] mt-0.5"></i>
+          <div class="text-amber-100">${spec}</div>
+        `;
+        specsContainer.appendChild(item);
+      });
+
+      // Render Teleport Destination Buttons
+      const buttonsContainer = document.getElementById('teleport-buttons-container');
+      buttonsContainer.innerHTML = '';
+      MARKET_NODES.forEach((n, idx) => {
+        const btn = document.createElement('button');
+        const isActive = (idx === currentState.currentNodeIndex);
+        btn.className = isActive 
+          ? "w-full text-left p-2 rounded-xl bg-[#f59e0b]/25 border border-[#fbbf24] text-white font-bold text-[11px] flex items-center justify-between shadow-md"
+          : "w-full text-left p-2 rounded-xl bg-black/40 border border-amber-900/60 text-amber-200 hover:text-white hover:border-[#fbbf24]/40 font-medium text-[11px] flex items-center justify-between transition-all";
+        
+        btn.innerHTML = `
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-bolt ${isActive ? 'text-[#fbbf24]' : 'text-amber-600'}"></i>
+            ${n.shortName}
+          </span>
+          ${isActive ? '<span class="text-[9px] bg-[#fbbf24] text-slate-950 px-1.5 py-0.5 rounded font-mono uppercase font-bold">HERE</span>' : ''}
+        `;
+        btn.onclick = () => teleportToNode(idx);
+        buttonsContainer.appendChild(btn);
+      });
+
+      // Update Navigation Buttons state
+      document.getElementById('btn-teleport-prev').disabled = (node.prevId === null);
+      if (node.nextId !== null) {
+        document.getElementById('btn-teleport-next').innerHTML = `
+          <span>TELEPORT TO NEXT</span>
+          <i class="fa-solid fa-bolt text-slate-950"></i>
+        `;
+        document.getElementById('btn-teleport-next').onclick = () => teleportToNode(node.nextId);
+      } else {
+        document.getElementById('btn-teleport-next').innerHTML = `
+          <span>RESTART BAZAAR TOUR</span>
+          <i class="fa-solid fa-rotate-left text-slate-950"></i>
+        `;
+        document.getElementById('btn-teleport-next').onclick = () => teleportToNode(0);
+      }
+    }
+
+    function indexToNum(i) {
+      return i + 1;
+    }
+
+    function renderKeyMap() {
+      const canvas = document.getElementById('keymap-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#140d0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 20) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 20) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // Teleport Network Lines
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      MARKET_NODES.forEach((n, idx) => {
+        if (idx === 0) ctx.moveTo(n.x, n.y);
+        else ctx.lineTo(n.x, n.y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Teleport Nodes Boxes
+      MARKET_NODES.forEach((n, idx) => {
+        const isSelected = (idx === currentState.currentNodeIndex);
+
+        ctx.fillStyle = isSelected ? 'rgba(245, 158, 11, 0.4)' : 'rgba(35, 20, 14, 0.85)';
+        ctx.strokeStyle = isSelected ? '#fbbf24' : 'rgba(245, 158, 11, 0.35)';
+        ctx.lineWidth = isSelected ? 2.5 : 1;
+
+        ctx.beginPath();
+        ctx.roundRect(n.x - 22, n.y - 14, 44, 28, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '9px Inter, sans-serif';
+        ctx.fillStyle = isSelected ? '#ffffff' : '#e0c8b3';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.shortName, n.x, n.y + 3);
+      });
+
+      // Active Camera Position & FOV Cone
+      const activeNode = MARKET_NODES[currentState.currentNodeIndex];
+      const radLon = THREE.MathUtils.degToRad(-currentState.lon - 90);
+      const coneLength = 32;
+      const halfFovRad = THREE.MathUtils.degToRad(currentState.fov / 2);
+
+      ctx.save();
+      ctx.translate(activeNode.x, activeNode.y);
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, coneLength, radLon - halfFovRad, radLon + halfFovRad);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function initAudio() {
+      if (audioContext) return;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playAudioChime(freq = 520, duration = 0.15) {
+      if (!audioContext) return;
+      try {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.08, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start();
+        osc.stop(audioContext.currentTime + duration);
+      } catch(e) {}
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (!currentState.isVR) {
+        const phi = THREE.MathUtils.degToRad(90 - currentState.lat);
+        const theta = THREE.MathUtils.degToRad(currentState.lon);
+
+        camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+        camera.target.y = 500 * Math.cos(phi);
+        camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+        camera.lookAt(camera.target);
+      }
+
+      if (portalGroup) {
+        portalGroup.children.forEach(ring => {
+          ring.rotation.z += 0.01;
+        });
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function() {
+      initThreeJS();
+
+      document.getElementById('btn-teleport-prev').addEventListener('click', () => {
+        const node = MARKET_NODES[currentState.currentNodeIndex];
+        if (node.prevId !== null) teleportToNode(node.prevId);
+      });
+
+      // Keymap Click Teleportation
+      document.getElementById('keymap-canvas').addEventListener('click', (e) => {
+        const rect = e.target.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        let closestIdx = 0;
+        let minDistance = 9999;
+        MARKET_NODES.forEach((node, idx) => {
+          const dist = Math.hypot(node.x - clickX, node.y - clickY);
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestIdx = idx;
+          }
+        });
+
+        if (minDistance < 40) {
+          teleportToNode(closestIdx);
+        }
+      });
+
+      // Sound Ambiance Toggle
+      document.getElementById('btn-audio').addEventListener('click', () => {
+        initAudio();
+        currentState.isAudioPlaying = !currentState.isAudioPlaying;
+        document.getElementById('btn-audio').innerHTML = currentState.isAudioPlaying 
+          ? `<i class="fa-solid fa-volume-high text-[#fbbf24]"></i>` 
+          : `<i class="fa-solid fa-volume-xmark text-sm"></i>`;
+      });
+
+      // Fullscreen Toggle
+      document.getElementById('btn-fullscreen').addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+        }
+      });
+
+      // Reset Camera View
+      document.getElementById('btn-reset-view').addEventListener('click', () => {
+        currentState.lon = 0;
+        currentState.lat = 0;
+        currentState.fov = 75;
+        camera.fov = 75;
+        camera.updateProjectionMatrix();
+        renderKeyMap();
+        playAudioChime(300, 0.1);
+      });
+
+      // VR Headset Mode Trigger
+      document.getElementById('btn-enter-vr-headset').addEventListener('click', async () => {
+        initAudio();
+        if (navigator.xr) {
+          try {
+            const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
+            if (isSupported) {
+              const session = await navigator.xr.requestSession('immersive-vr');
+              renderer.xr.setSession(session);
+              return;
+            }
+          } catch (err) {}
+        }
+        
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      });
+
+      // Collapsible Panels
+      document.getElementById('toggle-left-panel').addEventListener('click', () => {
+        document.getElementById('left-panel').classList.toggle('-translate-x-full');
+      });
+
+      document.getElementById('toggle-right-panel').addEventListener('click', () => {
+        document.getElementById('right-panel').classList.toggle('translate-x-full');
+      });
+
+      // Modal
+      document.getElementById('btn-close-modal').addEventListener('click', () => {
+        document.getElementById('modal-backdrop').classList.add('opacity-0', 'pointer-events-none');
+      });
+      document.getElementById('btn-modal-action').addEventListener('click', () => {
+        document.getElementById('modal-backdrop').classList.add('opacity-0', 'pointer-events-none');
+      });
+    };
+  </script>
+</body>
+</html>
